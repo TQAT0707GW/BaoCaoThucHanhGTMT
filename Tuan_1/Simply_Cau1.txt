@@ -1,0 +1,136 @@
+#include "sl_system_init.h"
+#include "app.h"
+#include "em_chip.h"
+#include "em_cmu.h"
+#include "em_gpio.h"
+#include "em_usart.h"
+
+// Định nghĩa chân cho UART và LED
+#define BSP_TXPORT gpioPortA
+#define BSP_RXPORT gpioPortA
+#define BSP_TXPIN 5
+#define BSP_RXPIN 6
+#define BSP_ENABLE_PORT gpioPortD
+#define BSP_ENABLE_PIN 4
+
+#define BSP_GPIO_LEDS
+#define BSP_GPIO_LED0_PORT gpioPortD
+#define BSP_GPIO_LED0_PIN 2
+#define BSP_GPIO_LED1_PORT gpioPortD
+#define BSP_GPIO_LED1_PIN 3
+#define BSP_GPIO_PB0_PORT gpioPortB
+#define BSP_GPIO_PB0_PIN 0
+#define BSP_GPIO_PB1_PORT gpioPortB
+#define BSP_GPIO_PB1_PIN 1
+
+// Hàm khởi tạo GPIO
+void initGPIO(void)
+{
+  // Cấu hình chân TX, RX cho UART
+  GPIO_PinModeSet(BSP_TXPORT, BSP_TXPIN, gpioModePushPull, 1);
+  GPIO_PinModeSet(BSP_RXPORT, BSP_RXPIN, gpioModeInput, 0);
+
+  // Kích hoạt VCOM cho giao tiếp UART với PC
+  GPIO_PinModeSet(BSP_ENABLE_PORT, BSP_ENABLE_PIN, gpioModePushPull, 1);
+}
+
+// Hàm khởi tạo USART0
+void initUSART0(void)
+{
+  USART_InitAsync_TypeDef init = USART_INITASYNC_DEFAULT;
+  init.enable = usartEnable;
+  init.baudrate = 115200;
+  init.databits = usartDatabits8;
+  init.parity = usartNoParity;
+  init.stopbits = usartStopbits1;
+
+  USART_InitAsync(USART0, &init);
+
+  // Định tuyến chân TX, RX cho USART0
+  GPIO->USARTROUTE[0].TXROUTE = (BSP_TXPORT << _GPIO_USART_TXROUTE_PORT_SHIFT) | (BSP_TXPIN << _GPIO_USART_TXROUTE_PIN_SHIFT);
+  GPIO->USARTROUTE[0].RXROUTE = (BSP_RXPORT << _GPIO_USART_RXROUTE_PORT_SHIFT) | (BSP_RXPIN << _GPIO_USART_RXROUTE_PIN_SHIFT);
+
+  // Bật tín hiệu RX và TX
+  GPIO->USARTROUTE[0].ROUTEEN = GPIO_USART_ROUTEEN_RXPEN | GPIO_USART_ROUTEEN_TXPEN;
+}
+
+// Khởi tạo LED và nút nhấn
+void initLED_BUTTON(void) {
+  CMU_ClockEnable(cmuClock_GPIO, true);
+
+  // Cấu hình LED
+  GPIO_PinModeSet(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN, gpioModePushPull, 0);
+  GPIO_PinModeSet(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN, gpioModePushPull, 0);
+
+  // Cấu hình nút nhấn
+  GPIO_PinModeSet(BSP_GPIO_PB0_PORT, BSP_GPIO_PB0_PIN, gpioModeInputPullFilter, 1);
+  GPIO_PinModeSet(BSP_GPIO_PB1_PORT, BSP_GPIO_PB1_PIN, gpioModeInputPullFilter, 1);
+
+  // Kích hoạt ngắt cho nút nhấn
+  NVIC_EnableIRQ(GPIO_EVEN_IRQn);
+  NVIC_EnableIRQ(GPIO_ODD_IRQn);
+
+  // Cấu hình ngắt cạnh xuống
+  GPIO_ExtIntConfig(BSP_GPIO_PB0_PORT, BSP_GPIO_PB0_PIN, BSP_GPIO_PB0_PIN, 0, 1, true);
+  GPIO_ExtIntConfig(BSP_GPIO_PB1_PORT, BSP_GPIO_PB1_PIN, BSP_GPIO_PB1_PIN, 0, 1, true);
+}
+
+// Ngắt cho chân GPIO chẵn
+void GPIO_EVEN_IRQHandler(void) {
+  GPIO_IntClear(0x5555);  // Xóa cờ ngắt
+  GPIO_PinOutToggle(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN);  // Đổi trạng thái LED0
+}
+
+// Ngắt cho chân GPIO lẻ
+void GPIO_ODD_IRQHandler(void) {
+  GPIO_IntClear(0xAAAA);  // Xóa cờ ngắt
+  GPIO_PinOutToggle(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN);  // Đổi trạng thái LED1
+}
+
+int main(void)
+{
+  sl_system_init();
+  app_init();
+
+  uint8_t buffer;
+
+  // Khởi tạo GPIO và USART0
+  initGPIO();
+  initUSART0();
+  initLED_BUTTON();
+
+  while (1) {
+    sl_system_process_action();
+    app_process_action();
+
+    buffer = 0;
+    do {
+      buffer = USART_Rx(USART0);  // Nhận dữ liệu qua UART
+    } while (buffer == 0);
+
+    switch(buffer) {
+      case '0':
+        GPIO_PinOutClear(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN);
+        GPIO_PinOutClear(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN);
+        break;
+      case '1':
+        GPIO_PinOutSet(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN);
+        GPIO_PinOutClear(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN);
+        break;
+      case '2':
+        GPIO_PinOutClear(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN);
+        GPIO_PinOutSet(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN);
+        break;
+      case '3':
+        GPIO_PinOutSet(BSP_GPIO_LED0_PORT, BSP_GPIO_LED0_PIN);
+        GPIO_PinOutSet(BSP_GPIO_LED1_PORT, BSP_GPIO_LED1_PIN);
+        break;
+      default:
+        break;
+    }
+
+#if defined(SL_CATALOG_POWER_MANAGER_PRESENT)
+    sl_power_manager_sleep();
+#endif
+  }
+}
