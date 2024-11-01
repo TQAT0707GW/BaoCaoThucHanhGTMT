@@ -76,7 +76,7 @@ int main(void)
 
   uint8_t buffer[BUFLEN];
   uint32_t refReq=40*10^6; //Frequency of board
-  uint32_t clock_div=66414;//Calculate from formula of USART
+  uint32_t clock_div=5303;//Calculate from formula of USART
   uint8_t i=0;
   uint32_t br=0;
   uint32_t timeTruyen=0;
