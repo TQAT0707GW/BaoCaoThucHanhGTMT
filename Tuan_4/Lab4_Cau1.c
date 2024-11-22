@@ -160,17 +160,16 @@ void countCharacters(uint8_t *buffer, uint32_t length, char *result) {
   }
  
   // Tìm ký tự xuất hiện nhiều nhất
-  char maxChar = 0;
-  int maxCount = 0;
-  for (int i = 0; i < 256; i++) {
+  char maxChar=0 ;int i=1;
+  int maxCount = freq[0];
+  for (i; i < 256; i++) {
     if (freq[i] > maxCount) {
       maxCount = freq[i];
-      maxChar = (char)i;
+	  maxChar = (char)i;
     }
   }
-
   // Trả kết quả dạng "ký tự: số lần"
-  sprintf(result, "   %c: %d   ", maxChar, maxCount);
+  sprintf(result, "  %c: %d  ", maxChar, maxCount);
   //Chuyển từ số sang chuỗi
 }
 
@@ -199,21 +198,14 @@ int main(void)
     while (!rx_done){
       EMU_EnterEM1();
     }
-
-    for (uint32_t i = 0; i < BUFLEN; i++){
-      USART_Tx(USART0, inbuf[i]);
-      outbuf[i] = inbuf[i];
-    }
-    USART_Tx(USART0, '   ');
     // Xử lý dữ liệu nhận được
      char result[50]; //lưu kết quả sau khi xử lý chuỗi
      countCharacters(inbuf, BUFLEN, result);
-
-     // Chuẩn bị phản hồi
-     strncpy((char *)outbuf, result, BUFLEN);
-
-    LDMA_StartTransfer(TX_LDMA_CHANNEL, &ldmaTXConfig, &ldmaTXDescriptor);
-
+	  for (uint32_t i = 0; i < strlen(result); i++) {
+        USART_Tx(USART0, result[i]);
+        while (!(USART_StatusGet(USART0) & USART_STATUS_TXBL));
+    }
+     
 #if defined(SL_CATALOG_POWER_MANAGER_PRESENT)
     // Let the CPU go to sleep if the system allows it.
     sl_power_manager_sleep();
